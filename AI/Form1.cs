@@ -15,6 +15,7 @@ namespace AI
         public Form1()
         {
             InitializeComponent();
+            dgvDatos.RowsAdded += dgvDatos_RowsAdded;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -24,73 +25,52 @@ namespace AI
 
         private void ConfigurarDataGridViews()
         {
-            // Configuración para el archivo Indexado (ID + Contenido)
             dgvDatos.Columns.Clear();
-            dgvDatos.Columns.Add("ID", "ID (Índice)");
+            // Agregamos la columna ID y la bloqueamos
+            int colIndex = dgvDatos.Columns.Add("ID", "ID (Auto)");
+            dgvDatos.Columns[colIndex].ReadOnly = true;
+
             dgvDatos.Columns.Add("Datos", "Información");
             dgvDatos.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            // ... resto del código de configuración
+        }
 
-            // Configuración para Propiedades (Evita el error que te salió)
-            dgvPropiedades.Columns.Clear();
-            dgvPropiedades.Columns.Add("Propiedad", "Propiedad");
-            dgvPropiedades.Columns.Add("Valor", "Valor");
-            dgvPropiedades.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        // Agrega este evento en Form1.cs
+        private void dgvDatos_RowsAdded(object sender, DataGridViewRowsAddedEventArgs e)
+        {
+            for (int i = 0; i < dgvDatos.Rows.Count; i++)
+            {
+                // Asignamos el número de fila + 1 como ID visible
+                dgvDatos.Rows[i].Cells[0].Value = (i + 1).ToString();
+            }
         }
 
         private void CrearArchivo()
         {
             try
             {
+                // Validación de datos en el Grid
                 if (dgvDatos.Rows.Count == 0 || string.IsNullOrWhiteSpace(dgvDatos.Rows[0].Cells[0].Value?.ToString()))
                 {
-                    MessageBox.Show("Por favor, escriba algo antes de crear el archivo.", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("Por favor, escriba el ID y la información.");
                     return;
                 }
 
                 SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                saveFileDialog1.Filter = FILTRO_ARCHIVOS;
-                saveFileDialog1.Title = "Guardar archivo";
-                saveFileDialog1.DefaultExt = "txt";
-                saveFileDialog1.AddExtension = true;
+                saveFileDialog1.Filter = "Archivos de datos (*.dat)|*.dat"; // Solo .dat
+                saveFileDialog1.DefaultExt = "dat";
 
                 if (saveFileDialog1.ShowDialog() == DialogResult.OK)
                 {
-                    string rutaArchivo = saveFileDialog1.FileName;
-                    string extension = Path.GetExtension(rutaArchivo).ToLower();
-
-                    if (File.Exists(rutaArchivo))
-                    {
-                        DialogResult resultado = MessageBox.Show("El archivo ya existe. �Desea reemplazarlo?", "Confirmaci�n", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                        if (resultado == DialogResult.No)
-                        {
-                            return;
-                        }
-                    }
-
-                    // Determinar el formato seg�n la extensi�n
-                    switch (extension)
-                    {
-                        case ".json":
-                            CrearArchivoJSON(rutaArchivo);
-                            break;
-                        case ".csv":
-                            CrearArchivoCSV(rutaArchivo);
-                            break;
-                        case ".txt":
-                        case ".dat":
-                        default:
-                            CrearArchivoTexto(rutaArchivo);
-                            break;
-                    }
-
-                    MessageBox.Show($"Archivo {extension.ToUpper()} creado exitosamente.", "�xito", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    archivoActual = rutaArchivo;
-                    dgvDatos.Rows.Clear();
+                    // Forzamos siempre la creación con índice
+                    CrearArchivoTexto(saveFileDialog1.FileName);
+                    archivoActual = saveFileDialog1.FileName;
+                    MessageBox.Show("Archivo indexado creado con éxito.");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al crear el archivo: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error: {ex.Message}");
             }
         }
 
@@ -103,23 +83,24 @@ namespace AI
             {
                 foreach (DataGridViewRow row in dgvDatos.Rows)
                 {
-                    if (!row.IsNewRow && row.Cells[0].Value != null && row.Cells[1].Value != null)
+                    // Verificamos que la celda de datos no esté vacía
+                    if (!row.IsNewRow && row.Cells[1].Value != null)
                     {
-                        // 1. Obtener ID y Posición
+                        // Leemos el ID que se generó automáticamente en la tabla
                         int id = int.Parse(row.Cells[0].Value.ToString());
                         long posicion = writerDatos.BaseStream.Position;
 
-                        // 2. Escribir en el archivo de Índice
+                        // Escribimos en el índice
                         writerIndice.Write(id);
                         writerIndice.Write(posicion);
 
-                        // 3. Escribir en el archivo de Datos
+                        // Escribimos el contenido en el archivo de datos
                         writerDatos.Write(row.Cells[1].Value.ToString());
                     }
                 }
             }
         }
-
+        
         private void CrearArchivoCSV(string rutaArchivo)
         {
             using (StreamWriter writer = new StreamWriter(rutaArchivo))
@@ -314,51 +295,15 @@ namespace AI
 
         private void AbrirArchivo()
         {
-            try
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
+            openFileDialog1.Filter = "Archivos de datos (*.dat)|*.dat";
+
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                OpenFileDialog openFileDialog1 = new OpenFileDialog();
-                openFileDialog1.Filter = FILTRO_ARCHIVOS;
-                openFileDialog1.Title = "Abrir archivo";
-
-                if (openFileDialog1.ShowDialog() == DialogResult.OK)
-                {
-                    string rutaArchivo = openFileDialog1.FileName;
-                    string extension = Path.GetExtension(rutaArchivo).ToLower();
-                    archivoActual = rutaArchivo;
-
-                    // limpiar el DataGridView antes de cargar
-                    dgvDatos.Rows.Clear();
-
-                    // Leer seg�n el tipo de archivo
-                    switch (extension)
-                    {
-                        case ".json":
-                            LeerArchivoJSON(rutaArchivo);
-                            break;
-                        case ".csv":
-                            LeerArchivoCSV(rutaArchivo);
-                            break;
-                        case ".txt":
-                        case ".dat":
-                        default:
-                            LeerArchivoTexto(rutaArchivo);
-                            break;
-                    }
-
-                    MessageBox.Show($"Archivo {extension.ToUpper()} abierto exitosamente.\nL�neas le�das: {dgvDatos.Rows.Count - 1}",
-                                    "�xito",
-                                    MessageBoxButtons.OK,
-                                    MessageBoxIcon.Information);
-
-                    this.Text = $"Archivos Secuenciales - {Path.GetFileName(rutaArchivo)}";
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error al abrir el archivo: {ex.Message}",
-                               "Error",
-                               MessageBoxButtons.OK,
-                               MessageBoxIcon.Error);
+                archivoActual = openFileDialog1.FileName;
+                // Llamar directamente a la lógica de lectura indexada
+                LeerArchivoTexto(archivoActual);
+                this.Text = $"Editor Indexado - {Path.GetFileName(archivoActual)}";
             }
         }
 
@@ -1011,44 +956,6 @@ namespace AI
             }
         }
 
-        private void BuscarRegistroPorID(string rutaDatos, int idBuscado)
-        {
-            string rutaIndice = Path.ChangeExtension(rutaDatos, ".idx");
-
-            if (!File.Exists(rutaIndice))
-            {
-                MessageBox.Show("No se encontró el archivo de índice.");
-                return;
-            }
-
-            using (BinaryReader readerIndice = new BinaryReader(File.Open(rutaIndice, FileMode.Open)))
-            using (BinaryReader readerDatos = new BinaryReader(File.Open(rutaDatos, FileMode.Open)))
-            {
-                bool encontrado = false;
-                while (readerIndice.BaseStream.Position < readerIndice.BaseStream.Length)
-                {
-                    int id = readerIndice.ReadInt32();
-                    long posicion = readerIndice.ReadInt64();
-
-                    if (id == idBuscado)
-                    {
-                        // Salto directo a la posición en el archivo de datos
-                        readerDatos.BaseStream.Seek(posicion, SeekOrigin.Begin);
-                        string contenido = readerDatos.ReadString();
-
-                        MessageBox.Show($"ID: {id}\nInformación: {contenido}", "Registro Encontrado");
-                        encontrado = true;
-                        break;
-                    }
-                }
-
-                if (!encontrado)
-                {
-                    MessageBox.Show("El ID buscado no existe en el índice.");
-                }
-            }
-        }
-
         private void btnCrearCarpeta_Click(object sender, EventArgs e)
         {
             CrearCarpeta();
@@ -1077,17 +984,51 @@ namespace AI
                 return;
             }
 
-            // Usamos el InputBox para pedir el ID
-            string input = Microsoft.VisualBasic.Interaction.InputBox("Ingrese el ID a buscar:", "Búsqueda Indexada", "1");
+            // Pedimos la información al usuario
+            string buscarTexto = Microsoft.VisualBasic.Interaction.InputBox(
+                "Ingrese la información que desea localizar:",
+                "Buscar ID por Contenido",
+                "");
 
-            if (int.TryParse(input, out int id))
+            if (!string.IsNullOrWhiteSpace(buscarTexto))
             {
-                BuscarRegistroPorID(archivoActual, id);
-            }
-            else
-            {
-                MessageBox.Show("Por favor, ingrese un número de ID válido.");
+                BuscarIDPorInformacion(archivoActual, buscarTexto);
             }
         }
+        private void BuscarIDPorInformacion(string rutaDatos, string textoBuscado)
+        {
+            string rutaIndice = Path.ChangeExtension(rutaDatos, ".idx");
+            if (!File.Exists(rutaIndice)) return;
+
+            using (BinaryReader readerIndice = new BinaryReader(File.Open(rutaIndice, FileMode.Open)))
+            using (BinaryReader readerDatos = new BinaryReader(File.Open(rutaDatos, FileMode.Open)))
+            {
+                bool encontrado = false;
+                while (readerIndice.BaseStream.Position < readerIndice.BaseStream.Length)
+                {
+                    // Leemos el par ID y Posición del índice
+                    int id = readerIndice.ReadInt32();
+                    long posicion = readerIndice.ReadInt64();
+
+                    // Saltamos a la posición en el archivo de datos para leer el contenido
+                    readerDatos.BaseStream.Seek(posicion, SeekOrigin.Begin);
+                    string contenido = readerDatos.ReadString();
+
+                    // Comparamos el contenido (puedes usar .Contains para búsquedas parciales)
+                    if (contenido.Trim().Equals(textoBuscado.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        MessageBox.Show($"La información '{textoBuscado}' se encuentra en el ID: {id}", "Resultado de Búsqueda");
+                        encontrado = true;
+                        break;
+                    }
+                }
+
+                if (!encontrado)
+                {
+                    MessageBox.Show("No se encontró ningún registro con esa información.");
+                }
+            }
+        }
+
     }
 }
